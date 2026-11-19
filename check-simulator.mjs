@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {PERSON,CONNECTIONS,REQUEST,createDemo,reviewRequest,cancelReview,runReviewed,verifyProfile} from './simulator-core.mjs';
+let n=0;function test(name,fn){fn();n++;console.log('PASS '+name);}
+const first=createDemo();
+test('starts with both preconfigured connections and unchanged sample profile',()=>{assert.equal(first.person.department,'Sales');assert.equal(CONNECTIONS.reader.canEdit,false);assert.equal(CONNECTIONS.editor.canEdit,true);assert.equal(first.results.reader,null);assert.equal(first.results.editor,null);});
+test('request cannot run without a review',()=>assert.throws(()=>runReviewed(first),/Review/));
+test('cancelled review sends no simulated change',()=>{const s=cancelReview(reviewRequest(first,'editor'));assert.equal(s.person.department,'Sales');assert.equal(s.review,null);assert.throws(()=>runReviewed(s));});
+test('unknown connection is rejected',()=>assert.throws(()=>reviewRequest(first,'other')));
+const denied=runReviewed(reviewRequest(first,'reader'));
+test('reader refusal preserves the profile and original state',()=>{assert.equal(denied.results.reader.status,'blocked');assert.deepEqual(denied.person,PERSON);assert.deepEqual(first.person,PERSON);assert.equal(first.results.reader,null);});
+const allowed=runReviewed(reviewRequest(denied,'editor'));
+test('same request is used for both contexts',()=>assert.deepEqual(allowed.results.reader.request,allowed.results.editor.request));
+test('editor changes only the intended sample field',()=>{assert.equal(allowed.results.editor.status,'allowed');assert.equal(allowed.person.department,REQUEST.value);assert.equal(allowed.person.email,PERSON.email);assert.equal(denied.person.department,'Sales');assert.equal(allowed.verified,false);});
+test('verification requires editor execution and checks the updated field',()=>{assert.throws(()=>verifyProfile(denied));assert.equal(verifyProfile(allowed).verified,true);assert.equal(verifyProfile({...allowed,person:{...PERSON}}).verified,false);});
+test('outdated review cannot be replayed',()=>assert.throws(()=>runReviewed({...allowed,review:{lane:'editor',revision:0}}),/Review/));
+test('restart resets result and profile independently',()=>{const reset=createDemo();assert.equal(reset.person.department,'Sales');assert.equal(reset.results.editor,null);assert.equal(reset.verified,false);assert.equal(allowed.person.department,'Engineering');});
+test('results explicitly identify their simulated provenance',()=>{assert.equal(allowed.mode,'simulation');assert.equal(allowed.results.reader.mode,'simulation');assert.equal(allowed.results.editor.mode,'simulation');});
+test('default simulator does not load the live client or make network calls',()=>{const html=readFileSync(new URL('./index.html',import.meta.url),'utf8');assert(html.includes('Simulation'));assert(html.includes('src="simulator.mjs"'));assert(!html.includes('src="live-ui.mjs"'));for(const name of ['simulator.mjs','simulator-core.mjs']){const js=readFileSync(new URL('./'+name,import.meta.url),'utf8');for(const marker of ['fetch(','XMLHttpRequest','WebSocket','localStorage','access_token','window.open'])assert(!js.includes(marker),marker);}});
+console.log(n+' simulator checks passed.');

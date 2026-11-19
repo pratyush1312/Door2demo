@@ -1,0 +1,8 @@
+export const PERSON=Object.freeze({name:'Alex Morgan',email:'alex.morgan@example.com',department:'Sales'});
+export const REQUEST=Object.freeze({action:'Update profile',person:PERSON.email,field:'department',value:'Engineering'});
+export const CONNECTIONS=Object.freeze({reader:Object.freeze({name:'Read-only connection',scopes:Object.freeze(['okta.users.read']),canEdit:false}),editor:Object.freeze({name:'Editor connection',scopes:Object.freeze(['okta.users.read','okta.users.manage']),canEdit:true})});
+export function createDemo(){return {mode:'simulation',person:{...PERSON},results:{reader:null,editor:null},review:null,verified:false,revision:0};}
+export function reviewRequest(state,lane){if(!CONNECTIONS[lane])throw Error('Choose a demo connection.');return {...state,review:{lane,revision:state.revision,request:{...REQUEST}}};}
+export function cancelReview(state){return {...state,review:null};}
+export function runReviewed(state){const review=state.review;if(!review||review.revision!==state.revision)throw Error('Review the current request first.');const connection=CONNECTIONS[review.lane],before={...state.person};const allowed=connection.canEdit&&connection.scopes.includes('okta.users.manage');const person=allowed?{...before,department:REQUEST.value}:before;return {...state,person,review:null,revision:state.revision+1,verified:allowed?false:state.verified,results:{...state.results,[review.lane]:{mode:'simulation',status:allowed?'allowed':'blocked',connection:connection.name,request:{...REQUEST},before,after:{...person}}}};}
+export function verifyProfile(state){if(state.results.editor?.status!=='allowed')throw Error('Run the editor request before checking the profile.');return {...state,verified:state.person.department===REQUEST.value};}
